@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Post — Tychain Forum</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#060d1a;--bg2:#0b1629;--card:rgba(255,255,255,0.04);--card-border:rgba(255,255,255,0.08);
+  --blue:#29b6f6;--purple:#7c3aed;--green:#22c55e;--red:#ef4444;
+  --white:#f1f5f9;--muted:#64748b;--muted2:#94a3b8;--glow:rgba(41,182,246,0.15);}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--white);min-height:100vh}
+.wrap{max-width:720px;margin:0 auto;padding:2rem 1.5rem 4rem}
+h1{font-size:1.5rem;font-weight:800;margin-bottom:.4rem;letter-spacing:-.02em}
+.sub{color:var(--muted2);font-size:.9rem;margin-bottom:1.6rem}
+.card{background:var(--card);border:1px solid var(--card-border);border-radius:16px;padding:1.6rem;backdrop-filter:blur(12px)}
+label{display:block;font-size:.8rem;font-weight:600;color:var(--muted2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:.5rem;margin-top:1.1rem}
+label:first-of-type{margin-top:0}
+input[type=text],textarea{width:100%;background:rgba(255,255,255,0.06);border:1px solid var(--card-border);color:var(--white);padding:.75rem 1rem;border-radius:10px;font-size:.92rem;font-family:'Inter',sans-serif;outline:none;transition:.2s}
+input[type=text]:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--glow)}
+textarea{min-height:160px;resize:vertical;line-height:1.55}
+.file-row{display:flex;align-items:center;gap:.7rem;margin-top:.4rem}
+.file-row input[type=file]{color:var(--muted2);font-size:.85rem}
+.actions{display:flex;justify-content:flex-end;gap:.7rem;margin-top:1.5rem}
+.btn{background:linear-gradient(135deg,var(--blue),#0288d1);color:#fff;border:none;padding:.7rem 1.4rem;border-radius:10px;font-weight:600;font-size:.9rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:.5rem}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(41,182,246,.35)}
+.btn.secondary{background:transparent;border:1px solid var(--card-border);color:var(--muted2)}
+.btn.secondary:hover{background:rgba(255,255,255,.04);color:var(--white)}
+.error{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:.7rem 1rem;color:#fca5a5;font-size:.85rem;margin-bottom:1rem}
+.hint{font-size:.72rem;color:var(--muted);margin-top:.4rem}
+</style>
+</head>
+<body>
+
+{% with active='forum' %}{% include '_nav.html' %}{% endwith %}
+
+<div class="wrap">
+  <h1><i class="fa-solid fa-pen-to-square" style="color:var(--blue);margin-right:.4rem"></i>New Forum Post</h1>
+  <p class="sub">Share a chart or kick off a discussion. Logged-in members can reply.</p>
+
+  {% if error %}<div class="error"><i class="fa-solid fa-circle-exclamation"></i> {{ error }}</div>{% endif %}
+
+  <form class="card" method="POST" action="/forum/new" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Title</label>
+    <input type="text" name="title" maxlength="200" required value="{{ title or '' }}" placeholder="What's your post about?">
+
+    <label>Body</label>
+    <textarea name="body" required placeholder="Add details, charts, links, or thoughts...">{{ body or '' }}</textarea>
+    <p class="hint">Plain text. Up to ~12 KB.</p>
+
+    <label>Image (optional)</label>
+    <div class="file-row">
+      <input type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp">
+    </div>
+    <p class="hint">PNG, JPG, GIF, or WebP. Max 1.5 MB. Stored inside Tychain's database.</p>
+
+    <div class="actions">
+      <a class="btn secondary" href="/forum">Cancel</a>
+      <button class="btn" type="submit"><i class="fa-solid fa-paper-plane"></i> Post</button>
+    </div>
+  </form>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forum — Tychain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#060d1a;--bg2:#0b1629;--card:rgba(255,255,255,0.04);--card-border:rgba(255,255,255,0.08);
+  --blue:#29b6f6;--purple:#7c3aed;--green:#22c55e;--red:#ef4444;
+  --white:#f1f5f9;--muted:#64748b;--muted2:#94a3b8;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--white);min-height:100vh}
+.wrap{max-width:880px;margin:0 auto;padding:2rem 1.5rem 4rem}
+.forum-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:2rem}
+.forum-head h1{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
+.forum-head p{font-size:.9rem;color:var(--muted2);margin-top:.3rem}
+.btn-new{background:linear-gradient(135deg,var(--blue),#0288d1);color:#fff;border:none;padding:.65rem 1.2rem;border-radius:10px;font-weight:600;font-size:.85rem;text-decoration:none;display:inline-flex;align-items:center;gap:.5rem;transition:.2s}
+.btn-new:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(41,182,246,.35)}
+.btn-disabled{background:rgba(255,255,255,.06);color:var(--muted2);border:1px solid var(--card-border);padding:.65rem 1.2rem;border-radius:10px;font-weight:500;font-size:.85rem;text-decoration:none;display:inline-flex;align-items:center;gap:.5rem}
+.post-list{display:flex;flex-direction:column;gap:.9rem}
+.post-card{background:var(--card);border:1px solid var(--card-border);border-radius:14px;padding:1.2rem 1.4rem;text-decoration:none;color:var(--white);transition:.2s;display:flex;gap:1rem;align-items:flex-start}
+.post-card:hover{border-color:rgba(41,182,246,.3);transform:translateY(-2px)}
+.post-thumb{width:84px;height:84px;border-radius:10px;background:rgba(255,255,255,.04);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--muted);overflow:hidden}
+.post-thumb img{width:100%;height:100%;object-fit:cover}
+.post-body{flex:1;min-width:0}
+.post-title{font-size:1.05rem;font-weight:700;margin-bottom:.3rem}
+.post-meta{font-size:.78rem;color:var(--muted2);display:flex;gap:.8rem;margin-bottom:.5rem;flex-wrap:wrap}
+.post-meta i{margin-right:.25rem}
+.post-snippet{font-size:.86rem;color:var(--muted2);line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.empty{text-align:center;padding:4rem 1rem;color:var(--muted2)}
+.empty i{font-size:2.4rem;color:var(--blue);margin-bottom:1rem;display:block}
+</style>
+</head>
+<body>
+
+{% with active='forum' %}{% include '_nav.html' %}{% endwith %}
+
+<div class="wrap">
+  <div class="forum-head">
+    <div>
+      <h1><i class="fa-solid fa-comments" style="color:var(--blue);margin-right:.4rem"></i>Forum</h1>
+      <p>Share charts, ideas, and discuss S&amp;P 500 stocks with the Tychain community.</p>
+    </div>
+    {% if logged_in %}
+      <a class="btn-new" href="/forum/new"><i class="fa-solid fa-plus"></i> New post</a>
+    {% else %}
+      <a class="btn-disabled" href="/auth?tab=signup"><i class="fa-solid fa-lock"></i> Sign in to post</a>
+    {% endif %}
+  </div>
+
+  {% if posts %}
+    <div class="post-list">
+      {% for p in posts %}
+      <a class="post-card" href="/forum/{{ p.id }}">
+        <div class="post-thumb">
+          {% if p.has_image %}
+            <img src="/forum/{{ p.id }}/image" alt="">
+          {% else %}
+            <i class="fa-solid fa-comment"></i>
+          {% endif %}
+        </div>
+        <div class="post-body">
+          <div class="post-title">{{ p.title }}</div>
+          <div class="post-meta">
+            <span><i class="fa-solid fa-user"></i>{{ p.author_email }}</span>
+            <span><i class="fa-regular fa-clock"></i>{{ p.created_at|time_ago }}</span>
+            <span><i class="fa-regular fa-comment"></i>{{ p.comment_count }} comments</span>
+          </div>
+          <div class="post-snippet">{{ p.body }}</div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">
+      <i class="fa-regular fa-comments"></i>
+      <p>No posts yet. Be the first to start a discussion!</p>
+    </div>
+  {% endif %}
+</div>
+
+</body>
+</html>

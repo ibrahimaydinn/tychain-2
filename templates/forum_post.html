@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ post.title }} — Tychain Forum</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#060d1a;--bg2:#0b1629;--card:rgba(255,255,255,0.04);--card-border:rgba(255,255,255,0.08);
+  --blue:#29b6f6;--purple:#7c3aed;--green:#22c55e;--red:#ef4444;
+  --white:#f1f5f9;--muted:#64748b;--muted2:#94a3b8;--glow:rgba(41,182,246,0.15);}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--white);min-height:100vh}
+.wrap{max-width:760px;margin:0 auto;padding:2rem 1.5rem 4rem}
+.back{display:inline-flex;align-items:center;gap:.4rem;color:var(--muted2);text-decoration:none;font-size:.85rem;margin-bottom:1.2rem}
+.back:hover{color:var(--white)}
+.post-card{background:var(--card);border:1px solid var(--card-border);border-radius:16px;padding:1.8rem 1.8rem 1.6rem}
+.post-title{font-size:1.5rem;font-weight:800;letter-spacing:-.02em;margin-bottom:.5rem;line-height:1.25}
+.post-meta{font-size:.78rem;color:var(--muted2);display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:1.2rem;padding-bottom:1rem;border-bottom:1px solid var(--card-border)}
+.post-meta i{margin-right:.25rem}
+.post-body{font-size:.95rem;line-height:1.7;color:#e2e8f0;white-space:pre-wrap;word-wrap:break-word}
+.post-image{margin-top:1.2rem;border-radius:12px;overflow:hidden;border:1px solid var(--card-border)}
+.post-image img{width:100%;display:block}
+h2{font-size:1rem;font-weight:700;color:var(--blue);letter-spacing:.05em;text-transform:uppercase;margin:2rem 0 1rem}
+.comment{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:1rem 1.2rem;margin-bottom:.8rem}
+.comment-meta{font-size:.75rem;color:var(--muted2);margin-bottom:.4rem}
+.comment-meta i{margin-right:.3rem}
+.comment-body{font-size:.9rem;line-height:1.6;color:#e2e8f0;white-space:pre-wrap;word-wrap:break-word}
+.empty{text-align:center;padding:2rem 1rem;color:var(--muted)}
+.reply-card{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:1.2rem;margin-top:1.2rem}
+.reply-card textarea{width:100%;background:rgba(255,255,255,0.06);border:1px solid var(--card-border);color:var(--white);padding:.7rem 1rem;border-radius:10px;font-size:.9rem;font-family:'Inter',sans-serif;outline:none;min-height:90px;resize:vertical;line-height:1.55}
+.reply-card textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--glow)}
+.reply-actions{display:flex;justify-content:flex-end;margin-top:.7rem}
+.btn{background:linear-gradient(135deg,var(--blue),#0288d1);color:#fff;border:none;padding:.55rem 1.2rem;border-radius:10px;font-weight:600;font-size:.85rem;cursor:pointer;display:inline-flex;align-items:center;gap:.5rem}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(41,182,246,.35)}
+.signin-cta{margin-top:1.2rem;padding:1rem 1.2rem;background:rgba(41,182,246,.06);border:1px solid rgba(41,182,246,.2);border-radius:12px;font-size:.88rem;color:var(--muted2);display:flex;align-items:center;gap:.6rem}
+.signin-cta a{color:var(--blue);font-weight:600;text-decoration:none}
+</style>
+</head>
+<body>
+
+{% with active='forum' %}{% include '_nav.html' %}{% endwith %}
+
+<div class="wrap">
+  <a class="back" href="/forum"><i class="fa-solid fa-arrow-left"></i> Back to forum</a>
+
+  <article class="post-card">
+    <h1 class="post-title">{{ post.title }}</h1>
+    <div class="post-meta">
+      <span><i class="fa-solid fa-user"></i>{{ post.author_email }}</span>
+      <span><i class="fa-regular fa-clock"></i>{{ post.created_at|time_ago }}</span>
+    </div>
+    <div class="post-body">{{ post.body }}</div>
+    {% if post.image_b64 %}
+    <div class="post-image">
+      <img src="/forum/{{ post.id }}/image" alt="">
+    </div>
+    {% endif %}
+  </article>
+
+  <h2><i class="fa-regular fa-comments" style="margin-right:.4rem"></i>{{ comments|length }} {% if comments|length == 1 %}Comment{% else %}Comments{% endif %}</h2>
+
+  {% if comments %}
+    {% for c in comments %}
+    <div class="comment">
+      <div class="comment-meta">
+        <i class="fa-solid fa-user"></i>{{ c.author_email }}
+        · {{ c.created_at|time_ago }}
+      </div>
+      <div class="comment-body">{{ c.body }}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">No comments yet — be the first to reply!</div>
+  {% endif %}
+
+  {% if logged_in %}
+    <form class="reply-card" method="POST" action="/forum/{{ post.id }}/comment">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <textarea name="body" required placeholder="Write a reply..."></textarea>
+      <div class="reply-actions">
+        <button class="btn" type="submit"><i class="fa-solid fa-paper-plane"></i> Reply</button>
+      </div>
+    </form>
+  {% else %}
+    <div class="signin-cta">
+      <i class="fa-solid fa-lock" style="color:var(--blue)"></i>
+      <span><a href="/auth?tab=login">Sign in</a> or <a href="/auth?tab=signup">create an account</a> to join the discussion.</span>
+    </div>
+  {% endif %}
+</div>
+
+</body>
+</html>

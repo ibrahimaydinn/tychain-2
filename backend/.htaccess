@@ -1,0 +1,5 @@
+# Deny direct HTTP access to the SQLite database and Python scripts
+<FilesMatch "\.(db|py|meta|csv)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+
+# Local SQLite (dev only — production uses Turso)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+tychain.db
+tychain_users.db
+
+# Cache / artifacts
+.cache/
+cache/
+*.log
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# HF / build
+.huggingface/

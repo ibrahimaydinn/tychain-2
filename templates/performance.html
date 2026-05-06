@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Performance Analytics — Tychain</title>
+<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0D1B2A;color:#ECEFF1;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+
+.container{max-width:1200px;margin:0 auto;padding:28px 20px}
+.page-hdr{display:flex;align-items:flex-start;justify-content:space-between;
+  margin-bottom:22px;flex-wrap:wrap;gap:14px}
+.page-hdr h1{font-size:1.65rem;font-weight:800;letter-spacing:-.01em}
+.page-hdr p{color:#90A4AE;font-size:.92rem;margin-top:6px;max-width:60ch;line-height:1.5}
+
+/* Tab bar */
+.tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.tab{background:#1A2B3C;border:1px solid #1E3A5F;color:#CFD8DC;
+  padding:10px 18px;border-radius:10px;cursor:pointer;font-weight:600;
+  font-size:.9rem;transition:.18s;display:inline-flex;align-items:center;gap:.5rem}
+.tab i{font-size:.85rem;opacity:.85}
+.tab:hover{background:#1F344C;color:#fff}
+.tab.active{background:linear-gradient(135deg,#29B6F6,#1E88E5);color:#fff;border-color:transparent}
+
+/* Table */
+.table-container{background:#1A2B3C;border:1px solid #1E3A5F;
+  border-radius:12px;padding:20px;margin-bottom:40px}
+table.dataTable{border-collapse:collapse !important;width:100% !important;color:#ECEFF1;}
+table.dataTable thead th{background:#111E2D;color:#CFD8DC;
+  font-weight:600;font-size:.78rem;text-transform:uppercase;
+  letter-spacing:.06em;padding:14px 18px;text-align:right;
+  border-bottom:1px solid #1E3A5F;}
+table.dataTable thead th:first-child{text-align:left}
+table.dataTable tbody td{padding:13px 18px;text-align:right;border-bottom:1px solid #14253A;
+  font-size:.92rem}
+table.dataTable tbody td:first-child{text-align:left}
+table.dataTable tbody tr{background:transparent !important;}
+table.dataTable tbody tr:hover{background:rgba(41,182,246,.06) !important;}
+
+/* DataTables Overrides for Dark Theme */
+.dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_processing, .dataTables_wrapper .dataTables_paginate {
+    color: #90A4AE !important;
+}
+.dataTables_wrapper .dataTables_filter input {
+    background: #0D1B2A; border: 1px solid #1E3A5F; color: #ECEFF1; border-radius: 6px; padding: 6px;
+}
+.dataTables_wrapper .dataTables_length select {
+    background: #0D1B2A; border: 1px solid #1E3A5F; color: #ECEFF1; border-radius: 6px; padding: 4px;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    color: #90A4AE !important; border: 1px solid transparent !important; border-radius: 6px !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: #1E3A5F !important; color: #FFF !important; border: 1px solid #1E3A5F !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current, .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+    background: #29B6F6 !important; color: #0D1B2A !important; border: 1px solid #29B6F6 !important;
+}
+
+.ticker{font-weight:700;font-size:.95rem;color:#ECEFF1}
+.price{color:#CFD8DC;font-family:Menlo,monospace;font-size:.92rem}
+.chg{padding:4px 9px;border-radius:5px;font-size:.78rem;font-weight:700;
+  font-family:Menlo,monospace;display:inline-block;min-width:62px;text-align:center}
+.chg.pos{background:rgba(34,197,94,.14);color:#22C55E}
+.chg.neg{background:rgba(239,68,68,.14);color:#EF4444}
+.chg.neutral{background:rgba(148,163,184,.14);color:#94A3B8}
+
+@media (max-width:640px){
+  .container{padding:18px 12px}
+}
+</style>
+</head>
+<body>
+
+{% with active='performance' %}{% include '_nav.html' %}{% endwith %}
+
+<div class="container">
+  <div class="page-hdr">
+    <div>
+      <h1><i class="fa-solid fa-chart-column" style="color:#29B6F6;margin-right:.4rem"></i>Performance Analytics</h1>
+      <p>Historical price movement across 1D, 1W, 1M, and 1Y windows.</p>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" id="tab-sp500" role="tab" aria-selected="true"
+            onclick="switchTab('SP500')">
+      <i class="fa-solid fa-flag-usa"></i> S&amp;P 500
+    </button>
+    <button class="tab" id="tab-bist" role="tab" aria-selected="false"
+            onclick="switchTab('BIST30')">
+      <i class="fa-solid fa-flag"></i> BIST 30
+    </button>
+  </div>
+
+  {% macro perf_table(rows, market_id, currency) -%}
+  <div id="{{ market_id }}-table" class="table-container" {% if market_id == 'bist' %}style="display:none"{% endif %}>
+      <table class="display" id="dt-{{ market_id }}">
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Last Price</th>
+            <th>1 Day</th>
+            <th>1 Week</th>
+            <th>1 Month</th>
+            <th>1 Year</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td><span class="ticker">{{ row.ticker }}</span></td>
+            <td data-sort="{{ row.price or 0 }}"><span class="price">{{ currency }}{{ row.price|numfmt }}</span></td>
+            <td data-sort="{{ row.pct_1d or 0 }}"><span class="chg {{ 'pos' if (row.pct_1d or 0) > 0 else ('neg' if (row.pct_1d or 0) < 0 else 'neutral') }}">{{ '+' if (row.pct_1d or 0) > 0 else '' }}{{ row.pct_1d|numfmt }}%</span></td>
+            <td data-sort="{{ row.pct_1w or 0 }}"><span class="chg {{ 'pos' if (row.pct_1w or 0) > 0 else ('neg' if (row.pct_1w or 0) < 0 else 'neutral') }}">{{ '+' if (row.pct_1w or 0) > 0 else '' }}{{ row.pct_1w|numfmt }}%</span></td>
+            <td data-sort="{{ row.pct_1m or 0 }}"><span class="chg {{ 'pos' if (row.pct_1m or 0) > 0 else ('neg' if (row.pct_1m or 0) < 0 else 'neutral') }}">{{ '+' if (row.pct_1m or 0) > 0 else '' }}{{ row.pct_1m|numfmt }}%</span></td>
+            <td data-sort="{{ row.pct_1y or 0 }}"><span class="chg {{ 'pos' if (row.pct_1y or 0) > 0 else ('neg' if (row.pct_1y or 0) < 0 else 'neutral') }}">{{ '+' if (row.pct_1y or 0) > 0 else '' }}{{ row.pct_1y|numfmt }}%</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+  </div>
+  {%- endmacro %}
+
+  {{ perf_table(sp500_perf, 'sp500', '$') }}
+  {{ perf_table(bist_perf,  'bist',  '₺') }}
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script>
+$(document).ready(function() {
+    $('#dt-sp500').DataTable({
+        pageLength: 25,
+        order: [[2, 'desc']] // Sort by 1 Day desc
+    });
+    $('#dt-bist').DataTable({
+        pageLength: 25,
+        order: [[2, 'desc']]
+    });
+});
+
+function switchTab(market){
+  const isBist = market === 'BIST30';
+  document.getElementById('bist-table').style.display  = isBist ? 'block' : 'none';
+  document.getElementById('sp500-table').style.display = isBist ? 'none'  : 'block';
+  document.getElementById('tab-bist').classList.toggle('active',  isBist);
+  document.getElementById('tab-sp500').classList.toggle('active', !isBist);
+}
+</script>
+
+</body>
+</html>

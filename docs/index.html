@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tychain — BIST30 AI Stock Forecasting</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#0D1B2A;color:#ECEFF1;
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  min-height:100vh;
+}
+a{color:#29B6F6;text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* header */
+.header{
+  background:linear-gradient(135deg,#0D1B2A 0%,#1A2B3C 100%);
+  border-bottom:2px solid #29B6F6;
+  padding:32px 24px 20px;text-align:center;
+}
+.header h1{
+  font-size:2.6rem;font-weight:800;letter-spacing:-1px;
+  background:linear-gradient(90deg,#29B6F6,#AB47BC);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.header p{color:#78909C;font-size:0.95rem;margin-top:4px}
+
+/* container */
+.container{max-width:1100px;margin:0 auto;padding:24px 16px}
+
+/* controls */
+.controls{
+  display:flex;gap:12px;align-items:flex-end;
+  margin-bottom:20px;flex-wrap:wrap;
+}
+.controls label{
+  color:#90A4AE;font-size:0.82rem;text-transform:uppercase;
+  letter-spacing:.05em;display:block;margin-bottom:4px;
+}
+.controls select{
+  background:#1A2B3C;border:1px solid #1E3A5F;border-radius:8px;
+  color:#ECEFF1;padding:10px 14px;font-size:1rem;min-width:200px;
+  cursor:pointer;
+}
+.controls select:focus{outline:none;border-color:#29B6F6}
+.btn-analyze{
+  background:#29B6F6;color:#0D1B2A;border:none;border-radius:8px;
+  padding:10px 28px;font-size:1rem;font-weight:700;cursor:pointer;
+  transition:background .2s;
+}
+.btn-analyze:hover{background:#4FC3F7}
+.btn-analyze:disabled{background:#37474F;color:#78909C;cursor:not-allowed}
+
+/* info bar */
+.info-bar{
+  background:#1A2B3C;border:1px solid #1E3A5F;border-radius:8px;
+  padding:12px 20px;color:#78909C;font-size:0.85rem;margin-bottom:20px;
+}
+
+/* loading */
+.loader-wrap{
+  display:none;text-align:center;padding:60px 20px;
+}
+.loader-wrap.active{display:block}
+.spinner{
+  width:48px;height:48px;border:4px solid #1E3A5F;
+  border-top-color:#29B6F6;border-radius:50%;
+  animation:spin 1s linear infinite;margin:0 auto 16px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-wrap .status{color:#90A4AE;font-size:0.95rem}
+.loader-wrap .elapsed{color:#546E7A;font-size:0.82rem;margin-top:6px}
+
+/* results */
+#results{margin-top:8px}
+
+/* signal banner (injected from backend HTML) */
+.signal-banner{padding:20px 28px;border-radius:12px;margin:20px 0;display:flex;align-items:center;gap:20px;font-size:1.1rem;font-weight:600}
+.signal-STRONG-BUY{background:#1B4332;border:2px solid #66BB6A}
+.signal-BUY{background:#1B3D2A;border:2px solid #A5D6A7}
+.signal-HOLD{background:#2C2800;border:2px solid #FFF176}
+.signal-SELL{background:#3D1A1A;border:2px solid #EF9A9A}
+.signal-STRONG-SELL{background:#4A0A0A;border:2px solid #EF5350}
+
+/* cards grid */
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin:16px 0}
+.card{background:#1A2B3C;border:1px solid #1E3A5F;border-radius:10px;padding:16px 20px}
+.card .label{color:#78909C;font-size:.78rem;text-transform:uppercase;letter-spacing:.06em}
+.card .value{font-size:1.6rem;font-weight:700;color:#29B6F6;margin:4px 0 2px}
+.card .sub{font-size:.82rem;color:#90A4AE}
+
+/* levels */
+.levels-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:16px 0}
+.level-card{background:#1A2B3C;border-radius:10px;padding:16px;text-align:center}
+.level-card .lc-label{color:#78909C;font-size:.78rem;text-transform:uppercase}
+.level-card .lc-val{font-size:1.5rem;font-weight:700;margin:4px 0}
+.lc-entry{border:2px solid #29B6F6}
+.lc-target{border:2px solid #66BB6A}
+.lc-stop{border:2px solid #EF5350}
+
+/* context cards */
+.ctx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:16px 0}
+.ctx-card{background:#1A2B3C;border:1px solid #1E3A5F;border-radius:10px;padding:16px 20px}
+.ctx-card .ctx-title{font-weight:700;font-size:1rem;margin-bottom:6px}
+.ctx-card .ctx-desc{color:#90A4AE;font-size:.87rem;line-height:1.55}
+
+/* summary */
+.summary-box{background:#1A2B3C;border-left:4px solid #29B6F6;border-radius:0 10px 10px 0;padding:16px 22px;margin:16px 0;color:#CFD8DC;font-size:.95rem;line-height:1.65}
+
+/* metrics */
+.metrics-row{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+.metric-pill{background:#1A2B3C;border:1px solid #1E3A5F;border-radius:8px;padding:10px 18px;text-align:center}
+.metric-pill .mp-label{color:#78909C;font-size:.73rem;text-transform:uppercase}
+.metric-pill .mp-val{color:#29B6F6;font-size:1.15rem;font-weight:700}
+
+/* section titles */
+.sec-title{color:#ECEFF1;font-size:1.1rem;font-weight:700;margin:24px 0 10px;padding-bottom:6px;border-bottom:1px solid #1E3A5F}
+.disclaimer{background:#0D1B2A;border:1px solid #1E3A5F;border-radius:8px;padding:14px 20px;color:#78909C;font-size:.8rem;margin-top:20px}
+
+/* live badge */
+.live-badge{display:inline-block;background:#00C853;color:#fff;font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.04em;animation:pulse-live 2s infinite;vertical-align:middle;margin-left:6px}
+@keyframes pulse-live{0%,100%{opacity:1}50%{opacity:.5}}
+.live-row{background:linear-gradient(90deg,#0D2818 0%,#1A2B3C 100%);border:1px solid #00C853;border-radius:10px;padding:14px 20px;margin-bottom:12px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.live-row .live-item{text-align:center;min-width:80px}
+.live-row .live-label{color:#78909C;font-size:.7rem;text-transform:uppercase}
+.live-row .live-val{color:#00E676;font-size:1.15rem;font-weight:700}
+
+/* charts */
+.charts-section{margin-top:24px}
+.chart-card{
+  background:#1A2B3C;border:1px solid #1E3A5F;border-radius:10px;
+  padding:16px;margin-bottom:16px;
+}
+.chart-card img{width:100%;border-radius:6px;display:block}
+.chart-card .chart-label{color:#90A4AE;font-size:.85rem;margin-bottom:10px;font-weight:600}
+
+/* error */
+.error-box{
+  background:#3D1A1A;border:2px solid #EF5350;border-radius:12px;
+  padding:24px;margin:20px 0;color:#ECEFF1;
+}
+.error-box .error-title{font-size:1.3rem;font-weight:700;color:#EF5350;margin-bottom:8px}
+
+/* footer */
+.footer{text-align:center;color:#546E7A;font-size:.78rem;padding:32px 16px 20px;border-top:1px solid #1E3A5F;margin-top:40px}
+
+/* responsive */
+@media(max-width:600px){
+  .header h1{font-size:1.8rem}
+  .controls{flex-direction:column}
+  .controls select{width:100%}
+  .levels-grid{grid-template-columns:1fr}
+  .live-row{gap:12px}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Tychain</h1>
+  <p>AI-powered BIST30 stock forecasting &middot; LSTM + HMM + Monte Carlo &middot; for educational purposes only</p>
+</div>
+
+<div class="container">
+
+  <div class="controls">
+    <div>
+      <label for="stock-select">Select a BIST30 Stock</label>
+      <select id="stock-select">
+        <option value="AKBNK">AKBNK</option>
+        <option value="ASELS">ASELS</option>
+        <option value="BIMAS">BIMAS</option>
+        <option value="DOHOL">DOHOL</option>
+        <option value="EKGYO">EKGYO</option>
+        <option value="ENKAI">ENKAI</option>
+        <option value="EREGL">EREGL</option>
+        <option value="FROTO">FROTO</option>
+        <option value="GARAN">GARAN</option>
+        <option value="GUBRF">GUBRF</option>
+        <option value="HALKB">HALKB</option>
+        <option value="ISCTR">ISCTR</option>
+        <option value="KCHOL">KCHOL</option>
+        <option value="KOZAA">KOZAA</option>
+        <option value="KOZAL">KOZAL</option>
+        <option value="KRDMD">KRDMD</option>
+        <option value="MGROS">MGROS</option>
+        <option value="ODAS">ODAS</option>
+        <option value="PETKM">PETKM</option>
+        <option value="PGSUS">PGSUS</option>
+        <option value="SAHOL">SAHOL</option>
+        <option value="SASA">SASA</option>
+        <option value="SISE">SISE</option>
+        <option value="TAVHL">TAVHL</option>
+        <option value="TCELL">TCELL</option>
+        <option value="THYAO">THYAO</option>
+        <option value="TKFEN">TKFEN</option>
+        <option value="TOASO">TOASO</option>
+        <option value="TUPRS">TUPRS</option>
+        <option value="ULKER">ULKER</option>
+        <option value="VAKBN">VAKBN</option>
+        <option value="VESTL">VESTL</option>
+        <option value="YKBNK" selected>YKBNK</option>
+      </select>
+    </div>
+    <button class="btn-analyze" id="btn-analyze" onclick="runAnalysis()">Analyze</button>
+  </div>
+
+  <div class="info-bar">
+    First analysis takes <strong>2-4 minutes</strong> &mdash; the AI trains fresh on each stock.
+    Subsequent requests for the same stock use a 12-hour cache and are much faster.
+  </div>
+
+  <div class="loader-wrap" id="loader">
+    <div class="spinner"></div>
+    <div class="status" id="loader-status">Connecting to AI model...</div>
+    <div class="elapsed" id="loader-elapsed"></div>
+  </div>
+
+  <div id="results"></div>
+
+  <div class="footer">
+    Tychain is an AI research tool &mdash; not financial advice. Always do your own research.<br>
+    Powered by TensorFlow &middot; hmmlearn &middot; yfinance &middot; Borsa Istanbul data<br><br>
+    <a href="https://github.com/ibrahimaydinn/tychain-bist30" target="_blank">GitHub</a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://huggingface.co/spaces/ibrahimaydinn/tychain-bist30" target="_blank">Hugging Face Space</a>
+  </div>
+
+</div>
+
+<script type="module">
+import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
+
+const HF_SPACE = "ibrahimaydinn/tychain-bist30";
+let client = null;
+
+// Connect to HF Space on page load
+async function connect() {
+  try {
+    client = await Client.connect(HF_SPACE);
+    console.log("Connected to HF Space");
+  } catch(e) {
+    console.warn("Pre-connect failed, will retry on analyze:", e);
+  }
+}
+connect();
+
+window.runAnalysis = async function() {
+  const btn = document.getElementById("btn-analyze");
+  const loader = document.getElementById("loader");
+  const results = document.getElementById("results");
+  const statusEl = document.getElementById("loader-status");
+  const elapsedEl = document.getElementById("loader-elapsed");
+  const stock = document.getElementById("stock-select").value;
+
+  btn.disabled = true;
+  results.innerHTML = "";
+  loader.classList.add("active");
+
+  const startTime = Date.now();
+  const timer = setInterval(() => {
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    elapsedEl.textContent = `Elapsed: ${m}:${String(s).padStart(2,"0")}`;
+    if (secs < 5) statusEl.textContent = "Connecting to AI model...";
+    else if (secs < 30) statusEl.textContent = "Downloading market data...";
+    else if (secs < 90) statusEl.textContent = "Training LSTM neural network...";
+    else if (secs < 150) statusEl.textContent = "Running HMM + Monte Carlo analysis...";
+    else statusEl.textContent = "Generating charts & signals...";
+  }, 1000);
+
+  try {
+    if (!client) {
+      statusEl.textContent = "Connecting to HF Space (first time may take ~30s)...";
+      client = await Client.connect(HF_SPACE);
+    }
+
+    const result = await client.predict("/predict", { symbol: stock });
+
+    clearInterval(timer);
+    loader.classList.remove("active");
+
+    // result.data = [html_string, image1, image2, image3]
+    const [html, img1, img2, img3] = result.data;
+
+    if (!html || html.includes("Error")) {
+      results.innerHTML = html || '<div class="error-box"><div class="error-title">Error</div>Analysis failed. Please try again.</div>';
+      btn.disabled = false;
+      return;
+    }
+
+    // Render HTML results
+    let output = html;
+
+    // Charts section
+    output += '<div class="charts-section">';
+    output += '<div class="sec-title">Charts</div>';
+
+    const chartData = [
+      { data: img1, label: "Last 100 Days — Actual vs Predicted" },
+      { data: img2, label: "Full History — Actual vs Predicted" },
+      { data: img3, label: "Trading Strategy Backtest" },
+    ];
+
+    for (const chart of chartData) {
+      if (chart.data) {
+        // chart.data could be a URL or a base64 object
+        const src = typeof chart.data === "string" ? chart.data : chart.data.url || "";
+        if (src) {
+          output += `<div class="chart-card">
+            <div class="chart-label">${chart.label}</div>
+            <img src="${src}" alt="${chart.label}">
+          </div>`;
+        }
+      }
+    }
+
+    output += '</div>';
+    output += `<div style="color:#546E7A;font-size:.78rem;text-align:center;padding:8px 0 16px;">
+      Blue line = Actual price &nbsp;|&nbsp; Orange dashed = Model prediction &nbsp;|&nbsp;
+      Green region = Out-of-sample test zone
+    </div>`;
+
+    results.innerHTML = output;
+
+  } catch(e) {
+    clearInterval(timer);
+    loader.classList.remove("active");
+    console.error("Analysis error:", e);
+
+    let errMsg = String(e.message || e);
+    if (errMsg.includes("Could not connect")) {
+      errMsg = "Could not connect to the AI backend. The Hugging Face Space may be sleeping — please wait 30 seconds and try again.";
+    }
+    results.innerHTML = `<div class="error-box">
+      <div class="error-title">Connection Error</div>
+      <div style="color:#CFD8DC">${errMsg}</div>
+      <div style="margin-top:12px;color:#78909C;font-size:.85rem;">
+        Tip: If the Space is sleeping, the first request wakes it up (~30s). Try again shortly.
+      </div>
+    </div>`;
+  }
+
+  btn.disabled = false;
+};
+</script>
+
+</body>
+</html>

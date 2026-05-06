@@ -1,0 +1,30 @@
+# Core ML & data
+numpy
+pandas
+scikit-learn
+tensorflow-cpu; sys_platform == 'linux'
+tensorflow; sys_platform != 'linux'
+
+# Finance data
+yfinance
+requests
+curl_cffi
+
+# Models
+hmmlearn
+
+# Plotting
+matplotlib
+Pillow
+
+# Web
+flask
+gunicorn
+lxml
+html5lib
+
+# Email
+beautifulsoup4
+
+# Database (Turso libSQL — production; falls back to local sqlite3 in dev)
+libsql-experimental
