@@ -435,11 +435,18 @@ def db_users_tracking(ticker):
         return db_config.dict_rows(cur)
 
 def db_already_notified(user_id, ticker, signal_type):
+    """Cooldown gate: True if (user_id, ticker, signal_type) was emailed in
+    the last 12 hours. Prevents the 60-second dispatcher from re-emailing
+    every tick while a signal stays above threshold. A signal change
+    (BUY → SELL or vice-versa) is treated as a new event because
+    signal_type differs."""
     with get_db() as conn:
         count = conn.execute("""
-            SELECT COUNT(*) FROM email_log 
-            WHERE user_id = ? AND ticker = ? AND signal_type = ? 
-            AND date(sent_at) = date('now')
+            SELECT COUNT(*) FROM email_log
+            WHERE user_id     = ?
+              AND ticker      = ?
+              AND signal_type = ?
+              AND sent_at     > datetime('now', '-12 hours')
         """, (user_id, ticker.upper(), signal_type)).fetchone()[0]
         return count > 0
 
@@ -1226,6 +1233,113 @@ def start_performance_refresher():
     print("[perf] started — refreshing every", PERFORMANCE_REFRESH_SECONDS, "seconds")
 
 
+# ── Email alert dispatcher (every 60 seconds) ──────────────────────────────────
+# Watches the cached `signals` table for tickers that any user is tracking,
+# and dispatches one email per (user, ticker, signal_type) when:
+#   • signal action ∈ {BUY, STRONG BUY, SELL, STRONG SELL}
+#   • signal strength ≥ ALERT_THRESHOLD (60%)
+#   • the same (user, ticker, signal_type) hasn't been emailed in the last 12h
+#
+# The dispatcher reads cached signals only — it does NOT re-train the LSTM
+# (that's a 2–5 minute job per ticker and would crush the free HF CPU). The
+# `signals` table is filled by the user clicking Analyze, by /api/tracked
+# action=refresh, or by the manual /api/tracked action=cron path.
+
+ALERT_DISPATCH_SECONDS = 60
+
+
+def _alert_dispatch_once():
+    """Single tick of the alert dispatcher. Idempotent and DB-driven."""
+    try:
+        tickers = db_all_unique_tickers()
+    except Exception as e:
+        print(f"[alert] could not list tracked tickers: {e}")
+        return
+
+    if not tickers:
+        return  # No watchlists yet — nothing to do.
+
+    sent  = 0
+    skipped = 0
+    for ticker in tickers:
+        try:
+            sig = db_get_signal(ticker)
+            if not sig:
+                continue
+            action   = (sig.get('signal_type') or '').upper()
+            strength = int(sig.get('signal_strength') or 0)
+            if action not in ALERT_SIGNAL_TYPES or strength < ALERT_THRESHOLD:
+                continue
+
+            users = db_users_tracking(ticker)
+            if not users:
+                continue
+
+            # Currency hint based on which catalogue the ticker came from.
+            is_bist = ticker in BIST30_STOCKS
+            currency_symbol = '₺' if is_bist else '$'
+
+            for u in users:
+                uid   = u.get('id') if hasattr(u, 'get') else u['id']
+                email = u.get('email') if hasattr(u, 'get') else u['email']
+                if not email:
+                    continue
+                if db_already_notified(uid, ticker, action):
+                    skipped += 1
+                    continue
+
+                import email_helper
+                result = email_helper.email_signal_alert(
+                    to_email=email,
+                    to_name=email,
+                    ticker=ticker,
+                    signal_type=action,
+                    strength=strength,
+                    price=sig.get('last_price') or 0,
+                    next_price=sig.get('next_day_price') or 0,
+                    summary=sig.get('summary') or '',
+                    currency_symbol=currency_symbol,
+                    dashboard_url=os.environ.get('APP_URL'),
+                )
+                if result is True:
+                    db_log_email(uid, ticker, action, strength)
+                    sent += 1
+                else:
+                    print(f"[alert] send failed to {email} for {ticker}: {result}")
+        except Exception as e:
+            print(f"[alert] {ticker} failed: {e}")
+
+    if sent or skipped:
+        print(f"[alert] tick: sent {sent}, skipped (cooldown) {skipped}")
+
+
+def _alert_dispatcher_loop():
+    import time
+    time.sleep(20)  # let other refreshers settle first
+    while True:
+        try:
+            _alert_dispatch_once()
+        except Exception as e:
+            print(f"[alert] loop error: {e}")
+        time.sleep(ALERT_DISPATCH_SECONDS)
+
+
+def start_alert_dispatcher():
+    import threading
+    import tempfile
+    lock_path = os.path.join(tempfile.gettempdir(), 'tychain_alert_dispatcher.lock')
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+    except FileExistsError:
+        return
+    thread = threading.Thread(target=_alert_dispatcher_loop,
+                              daemon=True, name='alert-dispatcher')
+    thread.start()
+    print("[alert] started — dispatching every", ALERT_DISPATCH_SECONDS, "seconds")
+
+
 # Initialize database tables unconditionally for Gunicorn
 init_db()
 
@@ -1241,6 +1355,10 @@ if os.environ.get('DISABLE_REFRESHER') != '1':
         start_performance_refresher()
     except Exception as e:
         print(f"[perf] failed to start: {e}")
+    try:
+        start_alert_dispatcher()
+    except Exception as e:
+        print(f"[alert] failed to start: {e}")
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=8080, debug=False)
