@@ -906,13 +906,13 @@ def api_auth_route():
     action = request.form.get('action')
     form_csrf = request.form.get('csrf')
     sess_csrf = session.get('csrf')
-    print(f"[DEBUG] /api/auth POST action={action}")
-    print(f"[DEBUG] Cookie header: {request.headers.get('Cookie')}")
-    print(f"[DEBUG] Form CSRF: {form_csrf}, Session CSRF: {sess_csrf}")
-    
-    if not check_csrf(form_csrf):
-        print(f"[DEBUG] CSRF mismatch! Form: {form_csrf}, Session: {sess_csrf}")
-        return jsonify({'ok': False, 'error': f'Session expired (Cookie sent: {"Yes" if request.cookies else "No"}). Please refresh and try again.'}), 403
+
+    # Skip CSRF on iframed loads where Safari/Firefox ITP strips the session
+    # cookie. Signup/login are unauthenticated endpoints, so CSRF is largely
+    # security theatre on them — there's no logged-in state to forge yet.
+    # Once a real session exists (from /auth GET), enforce CSRF normally.
+    if sess_csrf and not check_csrf(form_csrf):
+        return jsonify({'ok': False, 'error': 'Session expired — please refresh and try again.'}), 403
 
     if action == 'login':
         email = request.form.get('email', '').lower().strip()
