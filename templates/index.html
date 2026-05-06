@@ -173,18 +173,18 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
     <div class="select-row">
       <select id="stockSelect">
         <option value="">-- Choose a stock --</option>
-        <optgroup label="🇹🇷 BIST30 (Turkey)">
-          {% for sym, name in bist30_stocks.items() %}
+        <optgroup label="🇺🇸 S&amp;P 500 (US)">
+          {# Sort by symbol so AAPL/MSFT/etc. are easy to scan. The JSON
+             value is "{SYM} - {Company}" so we display it as-is. #}
+          {% for sym, name in sp500_stocks.items()|sort %}
           <option value="{{ sym }}">{{ name }}</option>
           {% endfor %}
         </optgroup>
-        {% for sector_label, sector_stocks in sp500_sectors.items() %}
-        <optgroup label="🇺🇸 {{ sector_label }}">
-          {% for sym, name in sector_stocks.items() %}
-          <option value="{{ sym }}">{{ sym }} - {{ name }}</option>
+        <optgroup label="🇹🇷 BIST30 (Turkey — limited availability)">
+          {% for sym, name in bist30_stocks.items()|sort %}
+          <option value="{{ sym }}">{{ name }}</option>
           {% endfor %}
         </optgroup>
-        {% endfor %}
       </select>
       <button class="btn-analyze" id="analyzeBtn" onclick="runAnalysis()">
         <i class="fa-solid fa-bolt"></i> Analyze
@@ -474,7 +474,13 @@ function runAnalysis(){
   startSteps();
 
   fetch('/api/analyze?symbol='+encodeURIComponent(sym))
-    .then(r=>r.json())
+    .then(async r=>{
+      const text = await r.text();
+      try { return JSON.parse(text); }
+      catch(e){
+        return { error: 'Server returned HTTP '+r.status+' (non-JSON). The model may have run out of memory or the upstream data source is unreachable. First 400 chars: ' + text.slice(0,400) };
+      }
+    })
     .then(data=>{
       stopSteps();
       document.getElementById('loadingOverlay').classList.remove('active');
@@ -563,7 +569,12 @@ function runAnalysis(){
       stopSteps();
       document.getElementById('loadingOverlay').classList.remove('active');
       document.getElementById('analyzeBtn').disabled=false;
-      document.getElementById('errorMsg').textContent='Request failed: '+err.message;
+      // Safari shows "Load failed" when the connection is reset by the proxy
+      // mid-flight. Translate that into a more helpful hint.
+      const hint = (err && err.message && /load failed|networkerror|failed to fetch/i.test(err.message))
+        ? 'The connection was reset while the model was running. This usually means: (a) you picked a BIST ticker and Yahoo blocks Turkish data from the server\'s IP, or (b) the analysis exceeded the 5-minute proxy timeout. Try a US ticker (e.g. AAPL).'
+        : (err && err.message) || 'Unknown error';
+      document.getElementById('errorMsg').textContent='Request failed — '+hint;
       document.getElementById('errorBox').style.display='flex';
       document.getElementById('results').style.display='block';
       document.getElementById('results').classList.add('visible');

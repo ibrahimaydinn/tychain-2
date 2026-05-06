@@ -284,21 +284,18 @@ def get_bist_live_price(symbol_short):
 
 # ── Download orchestrator ─────────────────────────────────────────────────────
 def download_fresh():
-    for attempt in range(1, 3):
-        # A: curl_cffi direct Yahoo (fastest)
-        raw = direct_yahoo_cffi(SYMBOL, START_DATE, END_DATE)
-        if raw is not None:
-            return raw
-        # B: yfinance Ticker
-        raw = yf_ticker(SYMBOL, START_DATE, END_DATE)
-        if raw is not None:
-            return raw
-        # C: yfinance download
-        raw = yf_download(SYMBOL, START_DATE, END_DATE)
-        if raw is not None:
-            return raw
-        if attempt < 2:
-            time.sleep(3)
+    """One pass through all three sources. Fail-fast (~30s worst case) so the
+    HF Space reverse-proxy timeout never trips and the front-end gets a clean
+    JSON error response instead of "Load failed"."""
+    raw = direct_yahoo_cffi(SYMBOL, START_DATE, END_DATE)
+    if raw is not None:
+        return raw
+    raw = yf_ticker(SYMBOL, START_DATE, END_DATE)
+    if raw is not None:
+        return raw
+    raw = yf_download(SYMBOL, START_DATE, END_DATE)
+    if raw is not None:
+        return raw
     return None
 
 # ── Cache check / load ────────────────────────────────────────────────────────
@@ -314,6 +311,13 @@ else:
         save_cache(raw)
 
 if raw is None:
+    if str(SYMBOL).upper().endswith('.IS'):
+        die(
+            f"Yahoo Finance is not returning data for the BIST ticker '{SYMBOL}'. "
+            f"This usually means Yahoo is blocking BIST quotes from the server's IP region "
+            f"(common on Hugging Face Spaces and other non-Turkish hosts). "
+            f"Try a US ticker (e.g. AAPL, NVDA, MSFT) instead — those work everywhere."
+        )
     die(
         f"Could not download data for '{SYMBOL}'. "
         f"Please try again in 30 seconds. "
