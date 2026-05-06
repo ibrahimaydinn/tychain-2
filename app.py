@@ -1081,6 +1081,151 @@ def start_quote_refresher():
     print("[refresher] started — refreshing every", REFRESH_INTERVAL_SECONDS, "seconds")
 
 
+# ── Performance fetcher (every 30 min) ────────────────────────────────────────
+# Powers /market-summary and /performance. Pulls 2y daily history for every
+# BIST30 + S&P 500 ticker, computes 1D/1W/1M/1Y movements, and bulk-writes
+# them into the performance_analytics table.
+
+PERFORMANCE_REFRESH_SECONDS = 30 * 60   # 30 minutes
+PERFORMANCE_BATCH_SIZE      = 50         # tickers per yfinance request
+
+
+def _performance_fetch_once():
+    """Single pass: fetch quotes for every ticker, recompute the
+    performance_analytics table. Idempotent. Errors on individual tickers
+    are logged but do not abort the run."""
+    try:
+        import yfinance as yf
+    except Exception as e:
+        print(f"[perf] yfinance unavailable: {e}")
+        return
+
+    bist_tickers  = list(BIST30_STOCKS.keys())
+    sp500_tickers = list(SP500_STOCKS.keys())
+    yf_bist  = [t + '.IS' for t in bist_tickers]
+    yf_sp500 = sp500_tickers
+    all_tickers = yf_bist + yf_sp500
+
+    print(f"[perf] fetch starting for {len(all_tickers)} tickers")
+
+    # Batch the fetches so a single bad symbol can't poison the whole call,
+    # and so memory stays bounded on the free HF CPU.
+    records = []
+    skipped = 0
+    for i in range(0, len(all_tickers), PERFORMANCE_BATCH_SIZE):
+        chunk = all_tickers[i:i + PERFORMANCE_BATCH_SIZE]
+        try:
+            data = yf.download(
+                " ".join(chunk),
+                period="2y",
+                interval="1d",
+                group_by="ticker",
+                threads=True,
+                progress=False,
+                auto_adjust=True,
+            )
+        except Exception as e:
+            print(f"[perf] batch {i}-{i+len(chunk)} failed: {e}")
+            skipped += len(chunk)
+            continue
+
+        for yf_tick in chunk:
+            is_bist   = yf_tick.endswith('.IS')
+            base_tick = yf_tick[:-3] if is_bist else yf_tick
+            market    = 'BIST30' if is_bist else 'SP500'
+            try:
+                if len(chunk) == 1:
+                    df = data
+                else:
+                    if yf_tick not in data.columns.get_level_values(0):
+                        skipped += 1
+                        continue
+                    df = data[yf_tick]
+                df = df.dropna(subset=['Close'])
+                if len(df) < 2:
+                    skipped += 1
+                    continue
+
+                last_price = float(df['Close'].iloc[-1])
+
+                def chg(days):
+                    if len(df) <= 1:
+                        return 0.0, 0.0
+                    if len(df) > days:
+                        past = float(df['Close'].iloc[-days - 1])
+                    else:
+                        past = float(df['Close'].iloc[0])
+                    if past == 0:
+                        return 0.0, 0.0
+                    a = last_price - past
+                    return a, (a / past) * 100.0
+
+                abs_1d, pct_1d = chg(1)
+                abs_1w, pct_1w = chg(5)
+                abs_1m, pct_1m = chg(21)
+                abs_1y, pct_1y = chg(252)
+
+                records.append((
+                    base_tick, market, last_price,
+                    abs_1d, pct_1d,
+                    abs_1w, pct_1w,
+                    abs_1m, pct_1m,
+                    abs_1y, pct_1y,
+                ))
+            except Exception as e:
+                skipped += 1
+                print(f"[perf] {yf_tick} failed: {e}")
+
+    if not records:
+        print(f"[perf] no rows produced (skipped {skipped}); leaving table untouched")
+        return
+
+    # libsql doesn't always implement executemany the way sqlite3 does, so
+    # use a per-row execute inside one transaction to stay portable.
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM performance_analytics")
+            for row in records:
+                conn.execute("""
+                    INSERT INTO performance_analytics
+                      (ticker, market, price, abs_1d, pct_1d,
+                       abs_1w, pct_1w, abs_1m, pct_1m, abs_1y, pct_1y)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, row)
+        print(f"[perf] wrote {len(records)} rows (skipped {skipped})")
+    except Exception as e:
+        print(f"[perf] DB write failed: {e}")
+
+
+def _performance_refresher_loop():
+    import time
+    # Stagger initial run so the quote refresher and the web server settle first.
+    time.sleep(15)
+    while True:
+        try:
+            _performance_fetch_once()
+        except Exception as e:
+            print(f"[perf] loop error: {e}")
+        time.sleep(PERFORMANCE_REFRESH_SECONDS)
+
+
+def start_performance_refresher():
+    """Same one-thread-per-Space file-lock pattern as the quote refresher."""
+    import threading
+    import tempfile
+    lock_path = os.path.join(tempfile.gettempdir(), 'tychain_perf_refresher.lock')
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+    except FileExistsError:
+        return
+    thread = threading.Thread(target=_performance_refresher_loop,
+                              daemon=True, name='perf-refresher')
+    thread.start()
+    print("[perf] started — refreshing every", PERFORMANCE_REFRESH_SECONDS, "seconds")
+
+
 # Initialize database tables unconditionally for Gunicorn
 init_db()
 
@@ -1092,6 +1237,10 @@ if os.environ.get('DISABLE_REFRESHER') != '1':
     except Exception as e:
         # Never block app startup on the refresher.
         print(f"[refresher] failed to start: {e}")
+    try:
+        start_performance_refresher()
+    except Exception as e:
+        print(f"[perf] failed to start: {e}")
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=8080, debug=False)
