@@ -423,22 +423,29 @@ function runAnalysis() {
       document.getElementById('mRMSE').textContent = fmt(data.metrics.rmse, 4);
       document.getElementById('mMAPE').textContent = fmt(data.metrics.mape, 2) + '%';
 
-      const t = data.trading;
-      document.getElementById('tStart').textContent   = symStr + fmt(t.starting_capital);
+      // Trading panel — model emits total_profit / profit_pct / num_trades /
+      // success_rate / test_days, and there's no explicit starting_capital
+      // (the backtest is hardcoded to 100,000 of the local currency).
+      const t = data.trading || {};
+      document.getElementById('tStart').textContent   = '100,000 ' + (data.currency || 'USD');
       document.getElementById('tFinal').textContent   = symStr + fmt(t.final_value);
-      const pn = t.profit;
+      const pn = t.total_profit;
       const tp = document.getElementById('tProfit');
       tp.textContent = (pn >= 0 ? '+' : '') + symStr + fmt(pn);
       tp.className   = 't-value ' + (pn >= 0 ? 'profit-pos' : 'profit-neg');
+      const ret = t.profit_pct;
       const tr = document.getElementById('tReturn');
-      tr.textContent = (t.return_pct >= 0 ? '+' : '') + fmt(t.return_pct, 2) + '%';
-      tr.className   = 't-value ' + (t.return_pct >= 0 ? 'profit-pos' : 'profit-neg');
-      document.getElementById('tTrades').textContent  = t.trades;
-      document.getElementById('tSuccess').textContent = fmt(t.win_rate, 1) + '%';
+      tr.textContent = (ret >= 0 ? '+' : '') + fmt(ret, 2) + '%';
+      tr.className   = 't-value ' + (ret >= 0 ? 'profit-pos' : 'profit-neg');
+      document.getElementById('tTrades').textContent  = (t.num_trades != null ? t.num_trades : '—') + ' over ' + (t.test_days != null ? t.test_days : '—') + 'd';
+      document.getElementById('tSuccess').textContent = fmt(t.success_rate, 1) + '%';
 
-      document.getElementById('chart100').src   = data.charts.last100;
-      document.getElementById('chartFull').src  = data.charts.full;
-      document.getElementById('chartTrade').src = data.charts.trading;
+      // Charts — model emits raw base64 strings. Prepend the data URI prefix.
+      const c = data.charts || {};
+      const b64 = (s) => s ? ('data:image/png;base64,' + s) : '';
+      document.getElementById('chart100').src   = b64(c.last_100_days);
+      document.getElementById('chartFull').src  = b64(c.full_range);
+      document.getElementById('chartTrade').src = b64(c.trading_strategy);
 
       document.getElementById('results').style.display = 'block';
       setTimeout(() => {
