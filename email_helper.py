@@ -1,19 +1,30 @@
 """Tychain — Email helper.
 
-Sends user-specific signal alerts via SMTP (Gmail / SES / Mailgun / Postmark /
-local mailhog). All credentials are pulled from environment at call time:
+Sends user-specific signal alerts. Picks a backend at call time:
 
-    SMTP_HOST       e.g. smtp.gmail.com
-    SMTP_PORT       465 (SMTPS) or 587 (STARTTLS) or 25 (plain)
-    SMTP_USER       SMTP username
-    SMTP_PASS       SMTP password / app password
-    SMTP_TIMEOUT    seconds (default 20)
-    MAIL_FROM       address used in the From header (default noreply@tychain.app)
-    MAIL_NAME       display name used in the From header (default 'Tychain Alerts')
-    APP_URL         base URL used to build dashboard links (default localhost)
+  1. BREVO_API_KEY  — HTTPS to https://api.brevo.com/v3/smtp/email.
+     Required when running on Hugging Face Spaces because HF firewalls
+     outbound SMTP (ports 25/465/587). Brevo's free tier is 300/day and
+     accepts any recipient once the sender address is verified.
+  2. SMTP_HOST + SMTP_PASS — classic SMTPS / STARTTLS. Used for local
+     dev, or self-hosted deploys that allow outbound mail ports.
+  3. neither set — mock mode (logs to stdout, returns True). Lets the
+     dispatcher run safely on a fresh deploy with no provider configured.
 
-When SMTP_HOST is not set the helper falls back to mock mode (logs the message
-to stdout) so the dispatcher loop is safe to run on a fresh deploy.
+Environment variables (resolved at call time so HF Space secret edits
+take effect on the next call without restart):
+
+    BREVO_API_KEY        Brevo API key, e.g. 'xkeysib-...'
+    BREVO_TIMEOUT        seconds (default 15)
+
+    SMTP_HOST            e.g. smtp.gmail.com
+    SMTP_PORT            465 (SMTPS) | 587 (STARTTLS) | 25 (plain)
+    SMTP_USER, SMTP_PASS
+    SMTP_TIMEOUT         seconds (default 20)
+
+    MAIL_FROM            address in From header (default noreply@tychain.app)
+    MAIL_NAME            display name (default 'Tychain Alerts')
+    APP_URL              base URL for dashboard links
 
 Public API:
     send_email(to_email, to_name, subject, html_body, text_body=None) -> True | str
@@ -24,10 +35,13 @@ Public API:
 
 from __future__ import annotations
 
+import json
 import os
 import smtplib
 import socket
 import ssl
+import urllib.error
+import urllib.request
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -38,15 +52,57 @@ from email.utils import formataddr, formatdate, make_msgid
 
 def _cfg() -> dict:
     return {
-        "MAIL_FROM":    os.environ.get("MAIL_FROM",  "noreply@tychain.app"),
-        "MAIL_NAME":    os.environ.get("MAIL_NAME",  "Tychain Alerts"),
-        "SMTP_HOST":    os.environ.get("SMTP_HOST",  ""),
-        "SMTP_PORT":    int(os.environ.get("SMTP_PORT", 465)),
-        "SMTP_USER":    os.environ.get("SMTP_USER",  ""),
-        "SMTP_PASS":    os.environ.get("SMTP_PASS",  ""),
-        "SMTP_TIMEOUT": int(os.environ.get("SMTP_TIMEOUT", 20)),
-        "APP_URL":      os.environ.get("APP_URL",    "http://localhost:8080"),
+        "MAIL_FROM":      os.environ.get("MAIL_FROM",  "noreply@tychain.app"),
+        "MAIL_NAME":      os.environ.get("MAIL_NAME",  "Tychain Alerts"),
+
+        # Brevo HTTP backend (preferred on HF Spaces — port 443 only)
+        "BREVO_API_KEY":  os.environ.get("BREVO_API_KEY", ""),
+        "BREVO_TIMEOUT":  int(os.environ.get("BREVO_TIMEOUT", 15)),
+
+        # SMTP backend (used when Brevo is not configured)
+        "SMTP_HOST":      os.environ.get("SMTP_HOST",  ""),
+        "SMTP_PORT":      int(os.environ.get("SMTP_PORT", 465)),
+        "SMTP_USER":      os.environ.get("SMTP_USER",  ""),
+        "SMTP_PASS":      os.environ.get("SMTP_PASS",  ""),
+        "SMTP_TIMEOUT":   int(os.environ.get("SMTP_TIMEOUT", 20)),
+
+        "APP_URL":        os.environ.get("APP_URL",    "http://localhost:8080"),
     }
+
+
+# ── Brevo HTTPS backend (port 443 — works on HF Spaces) ───────────────────────
+
+def _send_via_brevo(cfg, to_email, to_name, subject, html_body, text_body):
+    """POST to api.brevo.com/v3/smtp/email. Returns True or error string."""
+    body = {
+        "sender": {"name": cfg["MAIL_NAME"], "email": cfg["MAIL_FROM"]},
+        "to":     [{"email": to_email, "name": to_name or to_email}],
+        "subject":     subject,
+        "htmlContent": html_body,
+        "textContent": text_body or _html_to_text(html_body),
+        "headers":     {"X-Tychain-Alert": "signal"},
+    }
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.brevo.com/v3/smtp/email",
+        data=data, method="POST",
+        headers={
+            "api-key":      cfg["BREVO_API_KEY"],
+            "content-type": "application/json",
+            "accept":       "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=cfg["BREVO_TIMEOUT"]) as r:
+            if 200 <= r.status < 300:
+                return True
+            return f"Brevo HTTP {r.status}: {r.read().decode('utf-8', errors='replace')[:300]}"
+    except urllib.error.HTTPError as e:
+        return f"Brevo HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:300]}"
+    except urllib.error.URLError as e:
+        return f"Brevo URLError: {e.reason}"
+    except Exception as e:
+        return f"Brevo {type(e).__name__}: {e}"
 
 
 # ── Low-level send ─────────────────────────────────────────────────────────────
@@ -64,10 +120,15 @@ def send_email(to_email, to_name, subject, html_body, text_body=None):
     """Send a single email. Returns True on success, error-string on failure."""
     cfg = _cfg()
 
+    # Backend 1: Brevo HTTPS — preferred on HF Spaces.
+    if cfg["BREVO_API_KEY"]:
+        return _send_via_brevo(cfg, to_email, to_name, subject, html_body, text_body)
+
+    # Backend 2: classic SMTP (local dev / self-hosted that allows port 465/587).
     if not cfg["SMTP_HOST"]:
         print(
-            f"[email_helper] SMTP_HOST not set — mock-sending to {to_email}\n"
-            f"  Subject: {subject}"
+            f"[email_helper] no backend configured (set BREVO_API_KEY or SMTP_HOST)\n"
+            f"  mock-sending to {to_email} · Subject: {subject}"
         )
         return True
 
