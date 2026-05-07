@@ -417,9 +417,12 @@ def db_record_attempt(ip, email):
         )
 
 def db_all_unique_tickers():
+    """List of distinct tickers anyone has on a watchlist. Portable across
+    sqlite3.Row and libsql plain-tuple cursors — never use named-key access
+    on rows here."""
     with get_db() as conn:
         rows = conn.execute("SELECT DISTINCT ticker FROM tracked_stocks").fetchall()
-        return [r['ticker'] for r in rows]
+        return [(r['ticker'] if hasattr(r, 'keys') else r[0]) for r in rows]
 
 def db_users_tracking(ticker):
     with get_db() as conn:
